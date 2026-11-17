@@ -1,3 +1,7 @@
+import csv
+import gzip
+
+
 def pregunta_10():
     """
     Para cada registro del archivo, en el mismo orden en que aparecen,
@@ -11,4 +15,10 @@ def pregunta_10():
         [("E", 3, 5), ("A", 3, 4), ("B", 4, 4), ...]
     """
 
-    raise NotImplementedError
+    with gzip.open("data/data.csv.gz", mode="rt", encoding="utf-8") as file:
+        filas = list(csv.reader(file, delimiter="\t"))
+
+    return [
+        (fila[0], len(fila[3].split(",")), len(fila[4].split(",")))
+        for fila in filas
+    ]

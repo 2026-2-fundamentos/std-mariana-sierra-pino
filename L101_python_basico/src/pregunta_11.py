@@ -1,3 +1,7 @@
+import csv
+import gzip
+
+
 def pregunta_11():
     """
     La cuarta columna (`codes`) contiene letras minúsculas separadas por
@@ -10,4 +14,13 @@ def pregunta_11():
         {"a": 122, "b": 49, "c": 91, ...}
     """
 
-    raise NotImplementedError
+    with gzip.open("data/data.csv.gz", mode="rt", encoding="utf-8") as file:
+        filas = list(csv.reader(file, delimiter="\t"))
+
+    suma = {}
+    for fila in filas:
+        valor = int(fila[1])
+        for letra in fila[3].split(","):
+            suma[letra] = suma.get(letra, 0) + valor
+
+    return dict(sorted(suma.items()))

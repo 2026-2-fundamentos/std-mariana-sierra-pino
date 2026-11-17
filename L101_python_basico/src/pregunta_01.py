@@ -1,3 +1,7 @@
+import csv
+import gzip
+
+
 def pregunta_01():
     """
     Calcule la suma de los valores de la segunda columna (`value`) del
@@ -8,4 +12,6 @@ def pregunta_01():
         214
     """
 
-    raise NotImplementedError
+    with gzip.open("data/data.csv.gz", mode="rt", encoding="utf-8") as file:
+        filas = csv.reader(file, delimiter="\t")
+        return sum(int(fila[1]) for fila in filas)
