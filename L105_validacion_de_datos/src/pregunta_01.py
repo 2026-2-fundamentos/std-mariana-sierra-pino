@@ -1,3 +1,24 @@
+import json
+import os
+import re
+
+import pandas as pd
+
+COLUMNAS_REQUERIDAS = [
+    "supplier_id",
+    "supplier",
+    "country",
+    "city",
+    "purchase_date",
+    "amount",
+    "discount",
+    "weight",
+    "units",
+    "unit_price",
+    "contact_email",
+]
+
+
 def main():
     """
     Antes de limpiar o analizar un conjunto de datos, un analista debe
@@ -48,4 +69,57 @@ def main():
         }
     """
 
-    raise NotImplementedError
+    # Todo se lee como texto y sin convertir nada en NaN,
+    # para no modificar los valores del archivo.
+    df = pd.read_csv(
+        "data/ventas.csv.gz",
+        dtype=str,
+        keep_default_na=False,
+        encoding="utf-8",
+    )
+
+    # Normalización de encabezados: sin BOM, sin espacios externos,
+    # en minúsculas y con "_" en lugar de los espacios internos.
+    df.columns = [
+        re.sub(r"\s+", "_", columna.replace("\ufeff", "").strip().lower())
+        for columna in df.columns
+    ]
+
+    columnas = list(df.columns)
+
+    # Valores faltantes: celdas vacías o con "N/A"
+    faltantes = df.apply(lambda col: col.str.strip().isin(["", "N/A"]))
+
+    # Correos con la forma usuario@dominio.extension
+    patron_email = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    emails = df["contact_email"].str.strip()
+    emails_invalidos = ~emails.str.match(patron_email)
+
+    # Unidades: entre los valores numéricos, los que no son enteros positivos
+    unidades = pd.to_numeric(df["units"].str.strip(), errors="coerce").dropna()
+    unidades_invalidas = ~((unidades > 0) & (unidades == unidades.round()))
+
+    reporte = {
+        "row_count": len(df),
+        "column_count": len(columnas),
+        "missing_required_columns": sorted(
+            set(COLUMNAS_REQUERIDAS) - set(columnas)
+        ),
+        "unexpected_columns": sorted(set(columnas) - set(COLUMNAS_REQUERIDAS)),
+        "duplicate_row_count": int(df.duplicated().sum()),
+        "duplicate_supplier_id_row_count": int(
+            df["supplier_id"].duplicated(keep=False).sum()
+        ),
+        "missing_value_count_by_column": {
+            columna: int(faltantes[columna].sum()) for columna in columnas
+        },
+        "invalid_email_count": int(emails_invalidos.sum()),
+        "invalid_unit_count": int(unidades_invalidas.sum()),
+        "country_values": sorted(df["country"].unique().tolist()),
+    }
+
+    os.makedirs("submission", exist_ok=True)
+    with open("submission/data_quality_report.json", "w", encoding="utf-8") as file:
+        json.dump(reporte, file, ensure_ascii=False, indent=2)
+
+    return reporte
