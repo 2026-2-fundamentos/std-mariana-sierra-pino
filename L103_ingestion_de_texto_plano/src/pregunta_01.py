@@ -1,3 +1,8 @@
+import re
+
+import pandas as pd
+
+
 def pregunta_01():
     """
     El archivo `data/clusters_report.txt` es un reporte de clústeres de
@@ -26,4 +31,35 @@ def pregunta_01():
         ...
     """
 
-    raise NotImplementedError
+    with open("data/clusters_report.txt", encoding="utf-8") as file:
+        lineas = file.readlines()[4:]  # se saltan las 4 líneas del encabezado
+
+    clusters = []
+    for linea in lineas:
+        if not linea.strip():
+            continue
+
+        # Una línea que empieza con "número número porcentaje %" abre un clúster
+        inicio = re.match(r"^\s*(\d+)\s+(\d+)\s+([\d,]+)\s*%\s*(.*)$", linea)
+        if inicio:
+            clusters.append(
+                {
+                    "cluster": int(inicio.group(1)),
+                    "cantidad_de_palabras_clave": int(inicio.group(2)),
+                    "porcentaje_de_palabras_clave": float(
+                        inicio.group(3).replace(",", ".")
+                    ),
+                    "principales_palabras_clave": inicio.group(4),
+                }
+            )
+        else:
+            # Las demás líneas continúan las palabras clave del clúster actual
+            clusters[-1]["principales_palabras_clave"] += " " + linea.strip()
+
+    for cluster in clusters:
+        texto = cluster["principales_palabras_clave"]
+        texto = re.sub(r"\s+", " ", texto).strip().rstrip(".")
+        palabras = [palabra.strip() for palabra in texto.split(",")]
+        cluster["principales_palabras_clave"] = ", ".join(palabras)
+
+    return pd.DataFrame(clusters)
