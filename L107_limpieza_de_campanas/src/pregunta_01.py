@@ -1,3 +1,6 @@
+import glob
+import os
+
 import pandas as pd
 
 
@@ -43,4 +46,58 @@ def clean_campaign_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    # Pandas lee los .csv.gz directamente; index_col=0 descarta el índice viejo
+    archivos = sorted(glob.glob("data/bank-marketing-campaing-*.csv.gz"))
+    df = pd.concat(
+        [pd.read_csv(archivo, index_col=0) for archivo in archivos],
+        ignore_index=True,
+    )
+
+    # ---------- client ----------
+    client = df[
+        [
+            "client_id",
+            "age",
+            "job",
+            "marital",
+            "education",
+            "credit_default",
+            "mortgage",
+        ]
+    ].copy()
+    client["job"] = (
+        client["job"].str.replace(".", "", regex=False).str.replace("-", "_", regex=False)
+    )
+    client["education"] = client["education"].str.replace(".", "_", regex=False)
+    client["education"] = client["education"].replace("unknown", pd.NA)
+    client["credit_default"] = (client["credit_default"] == "yes").astype(int)
+    client["mortgage"] = (client["mortgage"] == "yes").astype(int)
+
+    # ---------- campaign ----------
+    campaign = df[
+        [
+            "client_id",
+            "number_contacts",
+            "contact_duration",
+            "previous_campaign_contacts",
+            "previous_outcome",
+            "campaign_outcome",
+        ]
+    ].copy()
+    campaign["previous_outcome"] = (campaign["previous_outcome"] == "success").astype(int)
+    campaign["campaign_outcome"] = (campaign["campaign_outcome"] == "yes").astype(int)
+    fechas = pd.to_datetime(
+        "2022-" + df["month"].astype(str) + "-" + df["day"].astype(str),
+        format="%Y-%b-%d",
+    )
+    campaign["last_contact_date"] = fechas.dt.strftime("%Y-%m-%d")
+
+    # ---------- economics ----------
+    economics = df[["client_id", "cons_price_idx", "euribor_three_months"]].copy()
+
+    os.makedirs("submission", exist_ok=True)
+    client.to_csv("submission/client.csv", index=False)
+    campaign.to_csv("submission/campaign.csv", index=False)
+    economics.to_csv("submission/economics.csv", index=False)
+
+    return client, campaign, economics
