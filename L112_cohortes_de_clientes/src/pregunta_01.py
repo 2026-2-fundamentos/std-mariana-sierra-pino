@@ -1,3 +1,12 @@
+import os
+
+import matplotlib
+
+matplotlib.use("Agg")  # permite guardar la imagen sin abrir una ventana
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
+import numpy as np
 import pandas as pd
 
 
@@ -44,4 +53,89 @@ def build_cohort_analysis() -> pd.DataFrame:
         ...
     """
 
-    raise NotImplementedError
+    df = pd.read_csv("data/sales.csv.gz", parse_dates=["OrderDate"])
+
+    # Mes de cada orden y mes de la primera compra de cada cliente
+    df["order_month"] = df["OrderDate"].dt.to_period("M")
+    df["cohort"] = df.groupby("CustomerID")["order_month"].transform("min")
+
+    # Meses transcurridos entre la orden y la primera compra
+    df["period_index"] = (
+        (df["order_month"].dt.year - df["cohort"].dt.year) * 12
+        + (df["order_month"].dt.month - df["cohort"].dt.month)
+    )
+
+    retention = (
+        df.groupby(["cohort", "period_index"])["CustomerID"]
+        .nunique()
+        .reset_index(name="active_customers")
+        .sort_values(["cohort", "period_index"])
+    )
+
+    tamanios = retention[retention["period_index"] == 0].set_index("cohort")[
+        "active_customers"
+    ]
+    retention["cohort_size"] = retention["cohort"].map(tamanios)
+    retention["retention_rate"] = (
+        retention["active_customers"] / retention["cohort_size"]
+    )
+    retention["cohort_month"] = retention["cohort"].astype(str)
+
+    retention = retention[
+        [
+            "cohort_month",
+            "period_index",
+            "active_customers",
+            "cohort_size",
+            "retention_rate",
+        ]
+    ].reset_index(drop=True)
+
+    os.makedirs("submission", exist_ok=True)
+    retention.to_csv("submission/cohort_retention.csv", index=False)
+
+    # ---------- Mapa de calor ----------
+    # Las combinaciones no observadas quedan como NaN y se dibujan vacías
+    matriz = retention.pivot(
+        index="cohort_month", columns="period_index", values="retention_rate"
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    imagen = ax.imshow(
+        np.ma.masked_invalid(matriz.values),
+        cmap="Blues",
+        vmin=0,
+        vmax=1,
+        aspect="auto",
+    )
+
+    for fila in range(matriz.shape[0]):
+        for columna in range(matriz.shape[1]):
+            valor = matriz.values[fila, columna]
+            if not np.isnan(valor):
+                ax.text(
+                    columna,
+                    fila,
+                    f"{valor:.0%}",
+                    ha="center",
+                    va="center",
+                    color="white" if valor > 0.5 else "black",
+                    fontsize=9,
+                )
+
+    ax.set_xticks(range(matriz.shape[1]))
+    ax.set_xticklabels(matriz.columns)
+    ax.set_yticks(range(matriz.shape[0]))
+    ax.set_yticklabels(matriz.index)
+    ax.set_xlabel("Meses desde la primera compra (period_index)")
+    ax.set_ylabel("Cohorte (mes de la primera compra)")
+    ax.set_title("Retención de clientes por cohorte")
+
+    barra = fig.colorbar(imagen, ax=ax)
+    barra.ax.yaxis.set_major_formatter(PercentFormatter(xmax=1))
+
+    fig.tight_layout()
+    fig.savefig("submission/cohort_retention_heatmap.png", dpi=120)
+    plt.close(fig)
+
+    return retention
